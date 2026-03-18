@@ -24,6 +24,7 @@ export default function NewProjectPage() {
     branch: '',
     composePath: 'docker-compose.yml',
     port: '',
+    basePath: '',
     envContent: '',
     enableSSL: false,
     forceHTTPS: false,
@@ -84,7 +85,7 @@ export default function NewProjectPage() {
     if (!form.name) return setError('Project name is required');
     if (!selectedRepo) return setError('Select a repository');
     if (!form.branch) return setError('Select a branch');
-    if (!validDomains.length) return setError('At least one domain is required');
+    if (!validDomains.length && !form.basePath.trim()) return setError('At least one domain or a base path is required');
 
     setDeploying(true);
     try {
@@ -94,6 +95,7 @@ export default function NewProjectPage() {
       formData.append('branch', form.branch);
       formData.append('composePath', form.composePath);
       if (form.port) formData.append('port', form.port);
+      if (form.basePath.trim()) formData.append('basePath', form.basePath.trim());
       formData.append('domains', JSON.stringify(validDomains));
       formData.append('envContent', form.envContent);
       formData.append('enableSSL', form.enableSSL);
@@ -242,9 +244,22 @@ export default function NewProjectPage() {
             </div>
           </div>
 
+          {/* Base Path */}
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">Base Path (optional)</label>
+            <input
+              type="text"
+              value={form.basePath}
+              onChange={(e) => setForm({ ...form, basePath: e.target.value })}
+              className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+              placeholder="/myapp"
+            />
+            <p className="text-xs text-gray-500 mt-1">Access via IP: <span className="text-gray-400">http://SERVER_IP/myapp/</span> — Leave empty to use domain only.</p>
+          </div>
+
           {/* Domains */}
           <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">Domains</label>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">Domains (optional if base path is set)</label>
             <div className="space-y-2">
               {domains.map((d, i) => (
                 <div key={i} className="flex gap-2">

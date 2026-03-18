@@ -36,6 +36,7 @@ db.exec(`
     redirect_www INTEGER DEFAULT 0,
     ssl_cert_path TEXT,
     ssl_key_path TEXT,
+    base_path TEXT,
     status TEXT DEFAULT 'stopped',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -59,6 +60,13 @@ try {
 } catch {
   db.exec("ALTER TABLE domains ADD COLUMN ssl_cert_path TEXT");
   db.exec("ALTER TABLE domains ADD COLUMN ssl_key_path TEXT");
+}
+
+// Migration: add base_path to projects if missing
+try {
+  db.prepare("SELECT base_path FROM projects LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE projects ADD COLUMN base_path TEXT");
 }
 
 module.exports = db;

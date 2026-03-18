@@ -51,7 +51,7 @@ export default function ProjectDetailPage() {
   const [containerStatus, setContainerStatus] = useState(null);
 
   // Edit form
-  const [editForm, setEditForm] = useState({ name: '', branch: '', composePath: '', port: '' });
+  const [editForm, setEditForm] = useState({ name: '', branch: '', composePath: '', port: '', basePath: '' });
 
   const fetchProject = async () => {
     try {
@@ -68,6 +68,7 @@ export default function ProjectDetailPage() {
         branch: data.branch || '',
         composePath: data.compose_path || '',
         port: String(data.port || ''),
+        basePath: data.base_path || '',
       });
     } catch (err) {
       setError(err.message);
@@ -271,6 +272,7 @@ export default function ProjectDetailPage() {
         branch: editForm.branch,
         composePath: editForm.composePath,
         port: editForm.port,
+        basePath: editForm.basePath,
       });
       showMsg('Project settings saved');
       await fetchProject();
@@ -405,11 +407,12 @@ export default function ProjectDetailPage() {
                   <div className="flex justify-between"><dt className="text-gray-400">Port</dt><dd className="text-white">{project.port}</dd></div>
                   <div className="flex justify-between"><dt className="text-gray-400">Branch</dt><dd className="text-white">{project.branch}</dd></div>
                   <div className="flex justify-between"><dt className="text-gray-400">Compose</dt><dd className="text-white font-mono text-xs">{project.compose_path}</dd></div>
+                  {project.base_path && <div className="flex justify-between"><dt className="text-gray-400">Base Path</dt><dd className="text-white font-mono text-xs">{project.base_path}</dd></div>}
                   <div className="flex justify-between"><dt className="text-gray-400">SSL</dt><dd className="text-white">{project.enable_ssl ? 'Enabled' : 'Disabled'}</dd></div>
                 </dl>
               </div>
               <div className="bg-gray-800/50 rounded-lg p-4">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Domains</h3>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Access</h3>
                 <div className="space-y-1">
                   {project.domains?.map((d) => (
                     <div key={d.id} className="flex items-center gap-2 text-sm text-gray-300">
@@ -417,6 +420,15 @@ export default function ProjectDetailPage() {
                       {d.domain}
                     </div>
                   ))}
+                  {project.base_path && (
+                    <div className="flex items-center gap-2 text-sm text-gray-300">
+                      <Code className="w-3 h-3 text-gray-500" />
+                      <span className="font-mono text-xs">http://&lt;server-ip&gt;{project.base_path}/</span>
+                    </div>
+                  )}
+                  {!project.domains?.length && !project.base_path && (
+                    <p className="text-sm text-gray-500">No domains or paths configured</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -504,9 +516,20 @@ export default function ProjectDetailPage() {
                 />
               </div>
             </div>
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Base Path</label>
+              <input
+                type="text"
+                value={editForm.basePath}
+                onChange={(e) => setEditForm({ ...editForm, basePath: e.target.value })}
+                className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                placeholder="/myapp"
+              />
+              <p className="text-xs text-gray-500 mt-1">Access via IP: <span className="text-gray-400">http://SERVER_IP{editForm.basePath || '/path'}/</span> — Leave empty to disable path-based access.</p>
+            </div>
             <div className="mt-2">
               <p className="text-xs text-gray-500 mb-1">Repo URL: <span className="font-mono text-gray-400">{project.repo_url}</span></p>
-              <p className="text-xs text-gray-500 mb-3">Changing port will regenerate nginx config. Redeploy to apply branch changes.</p>
+              <p className="text-xs text-gray-500 mb-3">Changing port or base path will regenerate nginx config. Redeploy to apply branch changes.</p>
             </div>
             <button
               onClick={saveProject}

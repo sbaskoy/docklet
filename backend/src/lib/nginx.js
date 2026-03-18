@@ -3,6 +3,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const NGINX_CONF_DIR = '/etc/nginx/conf.d';
+const NGINX_PATHS_DIR = '/etc/nginx/paths.d';
 const NGINX_SSL_DIR = '/etc/nginx/ssl';
 
 function generateServerBlock(domain, port, { enableSSL, forceHTTPS, redirectWWW, sslCertPath, sslKeyPath }) {
@@ -65,6 +66,44 @@ function generateProjectConfig(project, domains) {
   return config;
 }
 
+function generatePathConfig(project) {
+  const bp = project.base_path.replace(/\/+$/, ''); // remove trailing slash
+  let config = `# Docklet path-based config for: ${project.name}\n`;
+  config += `# Auto-generated - do not edit manually\n\n`;
+  config += `location ${bp}/ {\n`;
+  config += `    proxy_pass http://host.docker.internal:${project.port}/;\n`;
+  config += `    proxy_set_header Host $host;\n`;
+  config += `    proxy_set_header X-Real-IP $remote_addr;\n`;
+  config += `    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n`;
+  config += `    proxy_set_header X-Forwarded-Proto $scheme;\n`;
+  config += `}\n`;
+  return config;
+}
+
+function writePathConfig(projectName, configContent) {
+  if (!fs.existsSync(NGINX_PATHS_DIR)) {
+    fs.mkdirSync(NGINX_PATHS_DIR, { recursive: true });
+  }
+  const confPath = path.join(NGINX_PATHS_DIR, `${projectName}.conf`);
+  fs.writeFileSync(confPath, configContent);
+  return confPath;
+}
+
+function removePathConfig(projectName) {
+  const confPath = path.join(NGINX_PATHS_DIR, `${projectName}.conf`);
+  if (fs.existsSync(confPath)) {
+    fs.unlinkSync(confPath);
+  }
+}
+
+function readPathConfig(projectName) {
+  const confPath = path.join(NGINX_PATHS_DIR, `${projectName}.conf`);
+  if (fs.existsSync(confPath)) {
+    return fs.readFileSync(confPath, 'utf-8');
+  }
+  return null;
+}
+
 function readNginxConfig(projectName) {
   const confPath = path.join(NGINX_CONF_DIR, `${projectName}.conf`);
   if (fs.existsSync(confPath)) {
@@ -111,11 +150,16 @@ function saveSSLFiles(domain, certContent, keyContent) {
 
 module.exports = {
   generateProjectConfig,
+  generatePathConfig,
   readNginxConfig,
   writeNginxConfig,
   removeNginxConfig,
+  writePathConfig,
+  removePathConfig,
+  readPathConfig,
   reloadNginx,
   saveSSLFiles,
   NGINX_CONF_DIR,
+  NGINX_PATHS_DIR,
   NGINX_SSL_DIR,
 };

@@ -5,7 +5,7 @@ const path = require('path');
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { cloneRepo, dockerComposeUp, dockerComposeDown, dockerComposeLogs, dockerComposePs, dockerComposeServices, dockerComposeServiceLogs, pullRepo, isPortInUse, APPS_DIR } = require('../lib/docker');
-const { generateProjectConfig, readNginxConfig, writeNginxConfig, removeNginxConfig, reloadNginx, saveSSLFiles } = require('../lib/nginx');
+const { generateProjectConfig, generatePathConfig, readNginxConfig, writeNginxConfig, removeNginxConfig, writePathConfig, removePathConfig, readPathConfig, reloadNginx, saveSSLFiles } = require('../lib/nginx');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -53,7 +53,7 @@ router.post('/', upload.fields([
   { name: 'sslKey', maxCount: 1 },
 ]), (req, res) => {
   try {
-    const { name, repoUrl, branch, composePath, domains: domainsJson, envContent, enableSSL, forceHTTPS, redirectWWW, port: requestedPort } = req.body;
+    const { name, repoUrl, branch, composePath, domains: domainsJson, envContent, enableSSL, forceHTTPS, redirectWWW, port: requestedPort, basePath } = req.body;
 
     // Validation
     if (!name || !repoUrl || !branch) {
@@ -70,12 +70,27 @@ router.post('/', upload.fields([
 
     let domains = [];
     try {
-      domains = JSON.parse(domainsJson || '[]');
+      domains = JSON.parse(domainsJson || '[]').filter(d => d && d.trim());
     } catch {
       return res.status(400).json({ error: 'Invalid domains format' });
     }
-    if (!domains.length) {
-      return res.status(400).json({ error: 'At least one domain is required' });
+
+    // Validate base_path
+    let cleanBasePath = null;
+    if (basePath && basePath.trim()) {
+      cleanBasePath = basePath.trim().replace(/\/+$/, '');
+      if (!cleanBasePath.startsWith('/')) cleanBasePath = '/' + cleanBasePath;
+      if (!/^\/[a-zA-Z0-9_\-\/]+$/.test(cleanBasePath)) {
+        return res.status(400).json({ error: 'Base path must contain only alphanumeric characters, dashes, underscores, and slashes' });
+      }
+      const pathConflict = db.prepare('SELECT name FROM projects WHERE base_path = ?').get(cleanBasePath);
+      if (pathConflict) {
+        return res.status(400).json({ error: `Path "${cleanBasePath}" is already used by project "${pathConflict.name}"` });
+      }
+    }
+
+    if (!domains.length && !cleanBasePath) {
+      return res.status(400).json({ error: 'At least one domain or a base path is required' });
     }
 
     // Check for domain conflicts
@@ -140,9 +155,9 @@ router.post('/', upload.fields([
 
     // Insert into DB
     const result = db.prepare(`
-      INSERT INTO projects (name, repo_url, branch, compose_path, port, env_content, enable_ssl, force_https, redirect_www, ssl_cert_path, ssl_key_path, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'deploying')
-    `).run(name, repoUrl, branch, composePath || 'docker-compose.yml', port, envContent || '', ssl ? 1 : 0, fHttps ? 1 : 0, rWww ? 1 : 0, sslCertPath, sslKeyPath);
+      INSERT INTO projects (name, repo_url, branch, compose_path, port, env_content, enable_ssl, force_https, redirect_www, ssl_cert_path, ssl_key_path, base_path, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'deploying')
+    `).run(name, repoUrl, branch, composePath || 'docker-compose.yml', port, envContent || '', ssl ? 1 : 0, fHttps ? 1 : 0, rWww ? 1 : 0, sslCertPath, sslKeyPath, cleanBasePath);
 
     const projectId = result.lastInsertRowid;
 
@@ -167,10 +182,15 @@ router.post('/', upload.fields([
     }
 
     // STEP 7 & 8: Generate and write nginx config
-    const nginxConfig = generateProjectConfig(project, domainRows);
-    let nginxBackup = null;
     try {
-      writeNginxConfig(name, nginxConfig);
+      if (domainRows.length) {
+        const nginxConfig = generateProjectConfig(project, domainRows);
+        writeNginxConfig(name, nginxConfig);
+      }
+      if (project.base_path) {
+        const pathConfig = generatePathConfig(project);
+        writePathConfig(name, pathConfig);
+      }
     } catch (err) {
       db.prepare('UPDATE projects SET status = ? WHERE id = ?').run('running', projectId);
       return res.json({
@@ -293,8 +313,9 @@ router.delete('/:id', (req, res) => {
     fs.rmSync(projectDir, { recursive: true, force: true });
   }
 
-  // Remove nginx config and reload
+  // Remove nginx config and path config, then reload
   removeNginxConfig(project.name);
+  removePathConfig(project.name);
   reloadNginx();
 
   // Remove from DB (cascades to domains)
@@ -346,7 +367,7 @@ router.put('/:id', (req, res) => {
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
   if (!project) return res.status(404).json({ error: 'Project not found' });
 
-  const { name, branch, composePath, port } = req.body;
+  const { name, branch, composePath, port, basePath } = req.body;
 
   // Validate name if changed
   if (name && name !== project.name) {
@@ -371,31 +392,61 @@ router.put('/:id', (req, res) => {
     }
   }
 
+  // Validate base_path if provided
+  let updatedBasePath = project.base_path;
+  if (basePath !== undefined) {
+    if (basePath && basePath.trim()) {
+      updatedBasePath = basePath.trim().replace(/\/+$/, '');
+      if (!updatedBasePath.startsWith('/')) updatedBasePath = '/' + updatedBasePath;
+      if (!/^\/[a-zA-Z0-9_\-\/]+$/.test(updatedBasePath)) {
+        return res.status(400).json({ error: 'Base path must contain only alphanumeric characters, dashes, underscores, and slashes' });
+      }
+      const pathConflict = db.prepare('SELECT name FROM projects WHERE base_path = ? AND id != ?').get(updatedBasePath, project.id);
+      if (pathConflict) {
+        return res.status(400).json({ error: `Path "${updatedBasePath}" is already used by project "${pathConflict.name}"` });
+      }
+    } else {
+      updatedBasePath = null;
+    }
+  }
+
   const updatedName = name || project.name;
   const updatedBranch = branch || project.branch;
   const updatedComposePath = composePath || project.compose_path;
   const updatedPort = port ? parseInt(port, 10) : project.port;
 
   db.prepare(`
-    UPDATE projects SET name = ?, branch = ?, compose_path = ?, port = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-  `).run(updatedName, updatedBranch, updatedComposePath, updatedPort, project.id);
+    UPDATE projects SET name = ?, branch = ?, compose_path = ?, port = ?, base_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(updatedName, updatedBranch, updatedComposePath, updatedPort, updatedBasePath, project.id);
 
-  // If port changed, regenerate nginx config
-  if (updatedPort !== project.port || updatedName !== project.name) {
+  // Regenerate nginx configs if relevant fields changed
+  const needsRegenerate = updatedPort !== project.port || updatedName !== project.name || updatedBasePath !== project.base_path;
+  if (needsRegenerate) {
     const updated = db.prepare('SELECT * FROM projects WHERE id = ?').get(project.id);
     const domainRows = db.prepare('SELECT * FROM domains WHERE project_id = ?').all(project.id);
-    if (domainRows.length) {
-      // Remove old config if name changed
-      if (updatedName !== project.name) {
-        removeNginxConfig(project.name);
-      }
-      const nginxConfig = generateProjectConfig(updated, domainRows);
-      try {
+
+    // Remove old configs if name changed
+    if (updatedName !== project.name) {
+      removeNginxConfig(project.name);
+      removePathConfig(project.name);
+    }
+
+    try {
+      // Domain-based config
+      if (domainRows.length) {
+        const nginxConfig = generateProjectConfig(updated, domainRows);
         writeNginxConfig(updatedName, nginxConfig);
-        reloadNginx();
-      } catch (err) {
-        // non-fatal
       }
+      // Path-based config
+      if (updated.base_path) {
+        const pathConfig = generatePathConfig(updated);
+        writePathConfig(updatedName, pathConfig);
+      } else {
+        removePathConfig(updatedName);
+      }
+      reloadNginx();
+    } catch (err) {
+      // non-fatal
     }
   }
 
