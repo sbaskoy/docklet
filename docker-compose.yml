@@ -7,7 +7,7 @@ services:
     container_name: docklet-backend
     volumes:
       - backend_data:/app/data
-      - apps_data:/apps
+      - /apps:/apps
       - nginx_conf:/etc/nginx/conf.d
       - nginx_paths:/etc/nginx/paths.d
       - nginx_ssl:/etc/nginx/ssl
@@ -46,7 +46,6 @@ services:
 
 volumes:
   backend_data:
-  apps_data:
   nginx_conf:
   nginx_paths:
   nginx_ssl:
