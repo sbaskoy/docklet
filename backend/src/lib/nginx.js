@@ -68,15 +68,30 @@ function generateProjectConfig(project, domains) {
 
 function generatePathConfig(project) {
   const bp = project.base_path.replace(/\/+$/, ''); // remove trailing slash
+  const upstream = `http://host.docker.internal:${project.port}`;
+  const proxyHeaders =
+    `    proxy_set_header Host $host;\n` +
+    `    proxy_set_header X-Real-IP $remote_addr;\n` +
+    `    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n` +
+    `    proxy_set_header X-Forwarded-Proto $scheme;\n` +
+    `    proxy_http_version 1.1;\n` +
+    `    proxy_set_header Upgrade $http_upgrade;\n` +
+    `    proxy_set_header Connection "upgrade";\n`;
+
   let config = `# Docklet path-based config for: ${project.name}\n`;
   config += `# Auto-generated - do not edit manually\n\n`;
+
+  // Main path — strip prefix and proxy to project root
   config += `location ${bp}/ {\n`;
-  config += `    proxy_pass http://host.docker.internal:${project.port}/;\n`;
-  config += `    proxy_set_header Host $host;\n`;
-  config += `    proxy_set_header X-Real-IP $remote_addr;\n`;
-  config += `    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n`;
-  config += `    proxy_set_header X-Forwarded-Proto $scheme;\n`;
+  config += `    proxy_pass ${upstream}/;\n`;
+  config += proxyHeaders;
+  config += `}\n\n`;
+
+  // Exact match without trailing slash — redirect to path with slash
+  config += `location = ${bp} {\n`;
+  config += `    return 301 ${bp}/;\n`;
   config += `}\n`;
+
   return config;
 }
 

@@ -415,16 +415,16 @@ export default function ProjectDetailPage() {
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Access</h3>
                 <div className="space-y-1">
                   {project.domains?.map((d) => (
-                    <div key={d.id} className="flex items-center gap-2 text-sm text-gray-300">
-                      <Globe className="w-3 h-3 text-gray-500" />
+                    <a key={d.id} href={`http://${d.domain}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
+                      <Globe className="w-3 h-3" />
                       {d.domain}
-                    </div>
+                    </a>
                   ))}
                   {project.base_path && (
-                    <div className="flex items-center gap-2 text-sm text-gray-300">
-                      <Code className="w-3 h-3 text-gray-500" />
-                      <span className="font-mono text-xs">http://&lt;server-ip&gt;{project.base_path}/</span>
-                    </div>
+                    <a href={`${window.location.protocol}//${window.location.hostname}${project.base_path}/`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
+                      <Code className="w-3 h-3" />
+                      <span className="font-mono text-xs">{window.location.hostname}{project.base_path}/</span>
+                    </a>
                   )}
                   {!project.domains?.length && !project.base_path && (
                     <p className="text-sm text-gray-500">No domains or paths configured</p>
