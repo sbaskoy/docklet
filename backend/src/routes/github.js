@@ -44,7 +44,8 @@ router.get('/repos', async (req, res) => {
     });
     if (!response.ok) {
       const err = await response.json();
-      return res.status(response.status).json({ error: err.message || 'GitHub API error' });
+      const status = response.status === 401 ? 502 : response.status;
+      return res.status(status).json({ error: response.status === 401 ? 'Invalid GitHub token' : (err.message || 'GitHub API error') });
     }
     const repos = await response.json();
     res.json(repos.map(r => ({
@@ -73,7 +74,8 @@ router.get('/repos/:owner/:repo/branches', async (req, res) => {
     });
     if (!response.ok) {
       const err = await response.json();
-      return res.status(response.status).json({ error: err.message || 'GitHub API error' });
+      const status = response.status === 401 ? 502 : response.status;
+      return res.status(status).json({ error: response.status === 401 ? 'Invalid GitHub token' : (err.message || 'GitHub API error') });
     }
     const branches = await response.json();
     res.json(branches.map(b => ({ name: b.name })));

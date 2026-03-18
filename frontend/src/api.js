@@ -24,7 +24,7 @@ async function request(path, options = {}) {
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !path.startsWith('/github/')) {
     clearToken();
     window.location.href = '/login';
     throw new Error('Unauthorized');
