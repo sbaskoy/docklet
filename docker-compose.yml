@@ -1,0 +1,53 @@
+services:
+  # Backend API (includes frontend build via root Dockerfile)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docklet-backend
+    volumes:
+      - backend_data:/app/data
+      - apps_data:/apps
+      - nginx_conf:/etc/nginx/conf.d
+      - nginx_ssl:/etc/nginx/ssl
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:-docklet-secret-change-me}
+      - NGINX_CONTAINER_NAME=docklet-nginx
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - docklet_net
+
+  # Master Nginx - reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: docklet-nginx
+    command: ["sh", "-c", "rm -f /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/proxy_params:/etc/nginx/proxy_params:ro
+      - nginx_conf:/etc/nginx/conf.d
+      - nginx_ssl:/etc/nginx/ssl
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - docklet_net
+
+volumes:
+  backend_data:
+  apps_data:
+  nginx_conf:
+  nginx_ssl:
+
+networks:
+  docklet_net:
+    driver: bridge
